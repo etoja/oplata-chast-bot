@@ -46,6 +46,7 @@ def handle_numbers(message):
         rate_table = "\n".join([f"{m} мес. — {int(r * 1000)/10:.1f}%" for m, r in sorted(tariffs[bank].items())])
         text = (
             f"📊 <b>Расчёт по {bank}</b>\n"
+            f"\n"
             f"— <b>Срок:</b> {months} мес. ({months + 1} платежей)\n"
             f"— <b>Сумма к получению:</b> {amount:.2f} грн\n"
             f"— <b>Ставка:</b> {rate*100:.1f}%\n"
