@@ -53,7 +53,7 @@ def handle_numbers(message):
             f"— <b>Клиент заплатит:</b> {total:.2f} грн\n"
             f"— <b>Ежемесячно:</b> {monthly:.2f} грн\n"
             f"— <b>Переплата:</b> {overpay:.2f} грн\n\n"
-            f"📈 <b>Тарифы {bank}:</b>\n{rate_table}"
+            f"📈 <b>Тарифы {bank}:<br></b>\n{rate_table}"
         )
         bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=get_result_keyboard())
         link_kb = get_bank_link_keyboard(bank)
