@@ -33,31 +33,41 @@ def handle_numbers(message):
         user_data[chat_id]["months"] = months
         bot.send_message(chat_id, "💵 Введи сумму, которую ты хочешь получить:", reply_markup=types.ReplyKeyboardRemove())
     elif "months" in user:
-        amount = float(message.text)
+        try:
+            amount = float(message.text)
+        except ValueError:
+            bot.send_message(chat_id, "❌ Введи корректную сумму.")
+            return
+
         bank = user["bank"]
         months = user["months"]
         base_rate = tariffs[bank][months]
-        extra_rate = 0
-
-        if bank.lower() in ["приват", "privatbank", "приватбанк"]:
-            extra_rate = 0.013
-
+        extra_rate = 0.013 if bank == "ПриватБанк" else 0.0
         total_rate = base_rate + extra_rate
+
         total = amount / (1 - total_rate)
         monthly = total / (months + 1)
         overpay = total - amount
 
         user_data[chat_id]["amount"] = amount
 
-        rate_table = "\n".join([
-            f"<b>{m} мес.</b>: {int(r * 1000)/10:.1f}%"
-            for m, r in sorted(tariffs[bank].items())
-        ])
-
+        # Формирование строки со ставкой
         if extra_rate > 0:
-            rate_str = f"{base_rate * 100:.1f}% + {extra_rate * 100:.1f}% = {total_rate * 100:.1f}%"
+            rate_str = f"{base_rate * 100:.1f}% + {extra_rate * 100:.1f}% (эквайринг) = {total_rate * 100:.1f}%"
         else:
             rate_str = f"{total_rate * 100:.1f}%"
+
+        # Таблица тарифов
+        if extra_rate > 0:
+            rate_table = "\n".join([
+                f"<b>{m} мес.</b>: {int(r * 1000)/10:.1f}% + {int(extra_rate * 1000)/10:.1f}% = {int((r + extra_rate) * 1000)/10:.1f}%"
+                for m, r in sorted(tariffs[bank].items())
+            ])
+        else:
+            rate_table = "\n".join([
+                f"<b>{m} мес.</b>: {int(r * 1000)/10:.1f}%"
+                for m, r in sorted(tariffs[bank].items())
+            ])
 
         text = (
             f"📊 <b>Расчёт по {bank}</b>\n\n"
@@ -71,6 +81,7 @@ def handle_numbers(message):
         )
 
         bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=get_result_keyboard())
+
         link_kb = get_bank_link_keyboard(bank)
         if link_kb:
             bot.send_message(chat_id, "⬇️ Перейти в бот для оформления:", reply_markup=link_kb)
@@ -91,6 +102,6 @@ def handle_change(message):
         bot.send_message(chat_id, "Выбери количество месяцев:", reply_markup=markup)
     elif action == "💵 Изменить сумму":
         user_data[chat_id].pop("amount", None)
-        bot.send_message(chat_id, "💵 Введи сумму, которую ты хочешь получить:", reply_markup=types.ReplyKeyboardRemove())
+        bot.send_message(chat_id, "Введи сумму, которую ты хочешь получить:", reply_markup=types.ReplyKeyboardRemove())
 
 bot.polling()
