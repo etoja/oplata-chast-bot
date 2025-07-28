@@ -63,17 +63,23 @@ def handle_numbers(message):
 def handle_change(message):
     chat_id = message.chat.id
     action = message.text
+
     if action == "🔁 Изменить банк" or action == "🆕 Начать сначала":
         user_data[chat_id] = {}
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add(*tariffs.keys())
-        bot.send_message(chat_id, "Выбери банк:", reply_markup=markup)
+        bot.send_message(chat_id, "👋 Выбери банк:", reply_markup=markup)
+
     elif action == "📅 Изменить срок":
+        user_data[chat_id].pop("months", None)
+        user_data[chat_id].pop("amount", None)
         bank = user_data[chat_id].get("bank")
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add(*[str(k) for k in tariffs[bank].keys()])
-        bot.send_message(chat_id, "Выбери количество месяцев:", reply_markup=markup)
+        bot.send_message(chat_id, "📅 Выбери новый срок:", reply_markup=markup)
+
     elif action == "💵 Изменить сумму":
-        bot.send_message(chat_id, "Введи сумму:", reply_markup=types.ReplyKeyboardRemove())
+        user_data[chat_id].pop("amount", None)
+        bot.send_message(chat_id, "💵 Введи сумму:", reply_markup=types.ReplyKeyboardRemove())
 
 bot.polling()
