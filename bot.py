@@ -37,7 +37,7 @@ def handle_numbers(message):
         bank = user["bank"]
         months = user["months"]
         rate = tariffs[bank][months]
-        total = amount * (1 + rate)
+        total = amount * (1 - rate)
         monthly = total / (months + 1)
         overpay = total - amount
 
