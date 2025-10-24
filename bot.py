@@ -104,4 +104,25 @@ def handle_change(message):
         user_data[chat_id].pop("amount", None)
         bot.send_message(chat_id, "Введи сумму, которую ты хочешь получить:", reply_markup=types.ReplyKeyboardRemove())
 
+import threading
+import time
+import flask
+
+# Запускаем polling в потоке
+def run_bot():
+    bot.polling(none_stop=True)
+
+threading.Thread(target=run_bot).start()
+
+# Фейковый web-сервер
+app = flask.Flask(__name__)
+
+@app.route('/')
+def index():
+    return "Bot is running"
+
+# Render требует, чтобы процесс слушал порт
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
 bot.polling()
