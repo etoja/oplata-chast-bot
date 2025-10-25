@@ -1,139 +1,179 @@
-import os
-from flask import Flask, request
 import telebot
 from telebot import types
-from math import ceil
+import os
+from flask import Flask, request
 
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-if not TOKEN:
-    raise ValueError("TELEGRAM_BOT_TOKEN not set")
-
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")  # не забудь указать его в Render -> Environment
 bot = telebot.TeleBot(TOKEN)
-server = Flask(__name__)
+app = Flask(__name__)
+
+# Данные по процентам
+BANK_RATES = {
+    "mono": {
+        "name": "MonoBank",
+        "rates": {
+            2: 0.029,
+            3: 0.041,
+            4: 0.053,
+            5: 0.065,
+            6: 0.077,
+        },
+        "markup": 0.013
+    },
+    "pumb": {
+        "name": "ПУМБ",
+        "rates": {
+            2: 0.026,
+            3: 0.039,
+            4: 0.049,
+            5: 0.06,
+            6: 0.072,
+        },
+        "markup": 0.013
+    },
+    "privat": {
+        "name": "ПриватБанк",
+        "rates": {
+            2: 0.017,
+            3: 0.028,
+            4: 0.045,
+            5: 0.057,
+            6: 0.069,
+            7: 0.08
+        },
+        "markup": 0.013
+    }
+}
 
 user_data = {}
 
-BANK_RATES = {
-    'mono': {
-        'name': 'MonoBank',
-        'rates': {2: 1.5, 3: 2.5, 4: 4.0, 5: 5.2, 6: 6.3, 7: 7.5},
-    },
-    'pumb': {
-        'name': 'PUMB',
-        'rates': {2: 1.6, 3: 2.6, 4: 4.2, 5: 5.3, 6: 6.5, 7: 7.6},
-    },
-    'privat': {
-        'name': 'ПриватБанк',
-        'rates': {2: 1.7, 3: 2.8, 4: 4.5, 5: 5.7, 6: 6.9, 7: 8.0},
-        'acquiring': 1.3
-    },
-}
+def calc(bank_key, months, amount):
+    rate = BANK_RATES[bank_key]["rates"].get(months)
+    markup = BANK_RATES[bank_key]["markup"]
+    total_rate = rate + markup
+    total_payment = amount * (1 + total_rate)
+    monthly_payment = total_payment / months
+    overpay = total_payment - amount
+    return {
+        "total_payment": round(total_payment, 2),
+        "monthly_payment": round(monthly_payment, 2),
+        "overpay": round(overpay, 2),
+        "rate_percent": round(rate * 100, 1),
+        "markup_percent": round(markup * 100, 1),
+        "total_percent": round(total_rate * 100, 1)
+    }
 
-
-def calculate(bank_key, months, amount):
+def get_rate_text(bank_key):
     bank = BANK_RATES[bank_key]
-    base_rate = bank['rates'].get(months, 0)
-    acquiring = bank.get('acquiring', 0)
-    total_rate = base_rate + acquiring
+    lines = []
+    for months, rate in bank["rates"].items():
+        total = round((rate + bank["markup"]) * 100, 1)
+        lines.append(f"{months} мес.: {round(rate * 100,1)}% + {round(bank['markup']*100,1)}% = {total}%")
+    return "\n".join(lines)
 
-    total_payment = amount / (1 - total_rate / 100)
-    monthly = ceil((total_payment / (months + 1)) * 100) / 100
-    overpayment = total_payment - amount
-
-    result = f"📊 Расчёт по {bank['name']}\n\n"
-    result += f"Срок: {months} мес. ({months + 1} платежей)\n"
-    result += f"Сумма к получению: {amount:.2f} грн\n"
-    if acquiring:
-        result += f"Ставка: {base_rate:.1f}% + {acquiring:.1f}% (эквайринг) = {total_rate:.1f}%\n"
-    else:
-        result += f"Ставка: {base_rate:.1f}%\n"
-    result += f"Клиент заплатит: {total_payment:.2f} грн\n"
-    result += f"Ежемесячно: {monthly:.2f} грн\n"
-    result += f"Переплата: {overpayment:.2f} грн\n\n"
-    result += f"📈 Тарифы {bank['name']}:\n"
-
-    for m, rate in bank['rates'].items():
-        r = rate + acquiring if acquiring else rate
-        if acquiring:
-            result += f"{m} мес.: {rate:.1f}% + {acquiring:.1f}% = {r:.1f}%\n"
-        else:
-            result += f"{m} мес.: {r:.1f}%\n"
-
-    return result
-
-
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
+# Старт
+@bot.message_handler(commands=["start"])
+def start(message):
     markup = types.InlineKeyboardMarkup()
-    for bank in BANK_RATES:
-        btn = types.InlineKeyboardButton(BANK_RATES[bank]['name'], callback_data=f"bank_{bank}")
-        markup.add(btn)
-    bot.send_message(message.chat.id, "👋 Привет! Выберите банк:", reply_markup=markup)
+    markup.add(
+        types.InlineKeyboardButton("MonoBank", callback_data="mono"),
+        types.InlineKeyboardButton("PUMB", callback_data="pumb"),
+        types.InlineKeyboardButton("ПриватБанк", callback_data="privat")
+    )
+    bot.send_message(message.chat.id, "🏦 Выберите банк:", reply_markup=markup)
 
+# Выбор банка
+@bot.callback_query_handler(func=lambda call: call.data in BANK_RATES)
+def choose_bank(call):
+    user_id = call.from_user.id
+    user_data[user_id] = {"bank": call.data}
 
-@bot.callback_query_handler(func=lambda call: True)
-def handle_query(call):
-    chat_id = call.message.chat.id
-    if call.data.startswith("bank_"):
-        bank = call.data.split("_")[1]
-        user_data[chat_id] = {'bank': bank}
+    markup = types.InlineKeyboardMarkup()
+    for m in BANK_RATES[call.data]["rates"]:
+        markup.add(types.InlineKeyboardButton(f"{m} мес", callback_data=f"months_{m}"))
 
-        markup = types.InlineKeyboardMarkup()
-        for m in range(2, 8):
-            btn = types.InlineKeyboardButton(f"{m} мес.", callback_data=f"term_{m}")
-            markup.add(btn)
-        bot.edit_message_text(chat_id=chat_id, message_id=call.message.message_id, text="📆 Выберите срок:", reply_markup=markup)
+    bot.send_message(call.message.chat.id, "📆 Выберите срок:", reply_markup=markup)
 
-    elif call.data.startswith("term_"):
-        term = int(call.data.split("_")[1])
-        user_data[chat_id]['term'] = term
-        bot.send_message(chat_id, "💰 Введите сумму, которую вы хотите получить:")
+# Выбор срока
+@bot.callback_query_handler(func=lambda call: call.data.startswith("months_"))
+def choose_months(call):
+    user_id = call.from_user.id
+    months = int(call.data.split("_")[1])
+    user_data[user_id]["months"] = months
+    bot.send_message(call.message.chat.id, "💵 Введите сумму к получению:")
 
-    elif call.data == "start_over":
-        send_welcome(call.message)
-
-
-@bot.message_handler(func=lambda message: message.chat.id in user_data and 'term' in user_data[message.chat.id])
-def handle_amount(message):
-    chat_id = message.chat.id
+# Ввод суммы
+@bot.message_handler(func=lambda message: message.chat.id in user_data and "months" in user_data[message.chat.id])
+def enter_amount(message):
+    user_id = message.chat.id
     try:
-        amount = float(message.text)
-    except ValueError:
-        bot.send_message(chat_id, "🚫 Введите сумму цифрами, например: 1000")
+        amount = float(message.text.replace(",", "."))
+    except:
+        bot.send_message(user_id, "❌ Введите сумму цифрами.")
         return
 
-    user_data[chat_id]['amount'] = amount
-    data = user_data[chat_id]
-    text = calculate(data['bank'], data['term'], data['amount'])
+    data = user_data[user_id]
+    bank_key = data["bank"]
+    months = data["months"]
+    calc_data = calc(bank_key, months, amount)
+
+    result = f"""📊 Расчёт по {BANK_RATES[bank_key]["name"]}
+
+Срок: {months} мес. ({months+1} платежей)
+Сумма к получению: {amount:.2f} грн
+Ставка: {calc_data['rate_percent']}% + {calc_data['markup_percent']}% (эквайринг) = {calc_data['total_percent']}%
+Клиент заплатит: {calc_data['total_payment']} грн
+Ежемесячно: {calc_data['monthly_payment']} грн
+Переплата: {calc_data['overpay']} грн
+
+📈 Тарифы {BANK_RATES[bank_key]["name"]}:
+{get_rate_text(bank_key)}
+"""
 
     markup = types.InlineKeyboardMarkup()
     markup.add(
-        types.InlineKeyboardButton("🔁 Изменить банк", callback_data="bank_" + data['bank']),
-        types.InlineKeyboardButton("🔄 Сбросить", callback_data="start_over"),
+        types.InlineKeyboardButton("🔁 Изменить банк", callback_data="change_bank"),
+        types.InlineKeyboardButton("💸 Изменить сумму", callback_data="change_sum")
     )
+    bot.send_message(user_id, result, reply_markup=markup)
 
-    bot.send_message(chat_id, text, reply_markup=markup)
-    user_data.pop(chat_id)
+# Сброс на выбор банка
+@bot.callback_query_handler(func=lambda call: call.data == "change_bank")
+def change_bank(call):
+    user_id = call.from_user.id
+    user_data.pop(user_id, None)
 
+    markup = types.InlineKeyboardMarkup()
+    markup.add(
+        types.InlineKeyboardButton("MonoBank", callback_data="mono"),
+        types.InlineKeyboardButton("PUMB", callback_data="pumb"),
+        types.InlineKeyboardButton("ПриватБанк", callback_data="privat")
+    )
+    bot.send_message(call.message.chat.id, "🏦 Выберите банк:", reply_markup=markup)
 
-# ---------------- FLASK WEBHOOK SETUP ---------------- #
+# Сброс только суммы
+@bot.callback_query_handler(func=lambda call: call.data == "change_sum")
+def change_sum(call):
+    user_id = call.from_user.id
+    if user_id in user_data:
+        user_data[user_id].pop("amount", None)
+        bot.send_message(call.message.chat.id, "💵 Введите новую сумму к получению:")
 
-@server.route(f"/{TOKEN}", methods=['POST'])
-def receive_update():
-    json_str = request.get_data().decode('utf-8')
-    update = telebot.types.Update.de_json(json_str)
-    bot.process_new_updates([update])
-    return "!", 200
+# Webhook endpoint
+@app.route(f'/{TOKEN}', methods=['POST'])
+def webhook():
+    bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
+    return 'OK', 200
 
-
-@server.route("/", methods=['GET'])
+@app.route('/', methods=['GET'])
 def index():
-    return "Bot is running", 200
+    return "✅ Bot is running!"
 
-
-if __name__ == "__main__":
-    # Убираем polling — Render требует web-сервис
+# Запуск Flask
+if __name__ == '__main__':
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    port = int(os.environ.get('PORT', 5000))
     bot.remove_webhook()
-    bot.set_webhook(url=f"https://oplata-chast-bot.onrender.com/{TOKEN}")
-    port = int(os.environ.get("PORT", 10000))
-    server.run(host="0.0.0.0", port=port)
+    bot.set_webhook(url=f'https://oplata-chast-bot.onrender.com/{TOKEN}')  # замени на своё
+    app.run(host='0.0.0.0', port=port)
