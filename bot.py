@@ -1,4 +1,5 @@
 import os
+from flask import Flask, request
 import telebot
 from telebot import types
 from math import ceil
@@ -8,6 +9,7 @@ if not TOKEN:
     raise ValueError("TELEGRAM_BOT_TOKEN not set")
 
 bot = telebot.TeleBot(TOKEN)
+server = Flask(__name__)
 
 user_data = {}
 
@@ -114,5 +116,24 @@ def handle_amount(message):
     user_data.pop(chat_id)
 
 
-if __name__ == '__main__':
-    bot.infinity_polling()
+# ---------------- FLASK WEBHOOK SETUP ---------------- #
+
+@server.route(f"/{TOKEN}", methods=['POST'])
+def receive_update():
+    json_str = request.get_data().decode('utf-8')
+    update = telebot.types.Update.de_json(json_str)
+    bot.process_new_updates([update])
+    return "!", 200
+
+
+@server.route("/", methods=['GET'])
+def index():
+    return "Bot is running", 200
+
+
+if __name__ == "__main__":
+    # Убираем polling — Render требует web-сервис
+    bot.remove_webhook()
+    bot.set_webhook(url=f"https://oplata-chast-bot.onrender.com/{TOKEN}")
+    port = int(os.environ.get("PORT", 10000))
+    server.run(host="0.0.0.0", port=port)
