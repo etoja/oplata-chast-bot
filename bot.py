@@ -52,7 +52,7 @@ def calc(bank_key, months, amount):
     markup = BANK_RATES[bank_key]["markup"]
     total_rate = rate + markup
     total_payment = amount * (1 + total_rate)
-    monthly_payment = total_payment / months
+    monthly_payment = total_payment / (months + 1)  # ← исправлено здесь
     overpay = total_payment - amount
     return {
         "total_payment": round(total_payment, 2),
